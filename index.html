@@ -761,7 +761,11 @@ $('saveBtn').onclick = async () => {
   salle.push(d); closeLayers(); renderSalle(); toast('Colis ajouté à la salle gestionnaire');
 };
 
-/* ----- Scan de l'étiquette (lecture du texte sur l'ordinateur, aucune image envoyée ailleurs) ----- */
+/* ----- Scan de l'étiquette (lecture du texte sur l'appareil, aucune image envoyée ailleurs) -----
+   Les vraies photos sont souvent à l'envers, froissées ou brillantes : on essaie plusieurs
+   versions de l'image (normale / contrastée, à l'endroit / à l'envers / de côté) et on garde
+   la lecture qui trouve le mieux l'adresse de l'immeuble. */
+let ocrWorker = null;
 function chargerOCR(){
   return window.Tesseract ? Promise.resolve() : new Promise((ok, ko) => {
     const s = document.createElement('script');
@@ -770,65 +774,189 @@ function chargerOCR(){
     document.head.appendChild(s);
   });
 }
+async function lecteur(){
+  await chargerOCR();
+  if(!ocrWorker) ocrWorker = await Tesseract.createWorker('eng');
+  return ocrWorker;
+}
+const chargerImage = src => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ko(new Error('Image illisible')); i.src = src; });
+/* Met l'image à la taille voulue (agrandit ou réduit), la tourne et la passe en gris. */
+function preparer(img, deg, max, filtre = 'grayscale(1) contrast(1.4)'){
+  const s = max / Math.max(img.width, img.height), w = Math.round(img.width * s), h = Math.round(img.height * s);
+  const c = document.createElement('canvas'), cote = deg % 180 !== 0;
+  c.width = cote ? h : w; c.height = cote ? w : h;
+  const g = c.getContext('2d'); g.translate(c.width / 2, c.height / 2); g.rotate(deg * Math.PI / 180);
+  g.filter = filtre; g.imageSmoothingQuality = 'high'; g.drawImage(img, -w / 2, -h / 2, w, h);
+  return c;
+}
+/* Noir et blanc selon la luminosité locale : aide beaucoup sur le plastique froissé et les reflets. */
+function contraster(c, fen = 61, k = 0.2){
+  const g = c.getContext('2d'), W = c.width, H = c.height, im = g.getImageData(0, 0, W, H), d = im.data;
+  const gris = new Float32Array(W * H); for(let i = 0; i < W * H; i++) gris[i] = d[i * 4];
+  const S = new Float64Array((W + 1) * (H + 1));
+  for(let y = 0; y < H; y++){ let l = 0; for(let x = 0; x < W; x++){ l += gris[y * W + x]; S[(y + 1) * (W + 1) + x + 1] = S[y * (W + 1) + x + 1] + l; } }
+  const r = fen >> 1;
+  for(let y = 0; y < H; y++) for(let x = 0; x < W; x++){
+    const x1 = Math.max(0, x - r), y1 = Math.max(0, y - r), x2 = Math.min(W - 1, x + r), y2 = Math.min(H - 1, y + r);
+    const n = (x2 - x1 + 1) * (y2 - y1 + 1);
+    const moy = (S[(y2 + 1) * (W + 1) + x2 + 1] - S[y1 * (W + 1) + x2 + 1] - S[(y2 + 1) * (W + 1) + x1] + S[y1 * (W + 1) + x1]) / n;
+    const v = gris[y * W + x] < moy * (1 - k) ? 0 : 255, i = (y * W + x) * 4; d[i] = d[i + 1] = d[i + 2] = v;
+  }
+  g.putImageData(im, 0, 0); return c;
+}
+
 $('scanFile').onchange = async e => {
   const f = e.target.files[0]; if(!f) return;
   const url = URL.createObjectURL(f);
   $('scanInner').innerHTML = `<img src="${url}" alt="Étiquette"><div style="font-size:12.5px;margin-top:6px" id="scanTxt">Lecture de l'étiquette…</div>`;
   $('scanProg').style.display = ''; const bar = $('scanProg').firstElementChild; bar.style.width = '5%';
   try{
-    await chargerOCR();
-    const {data} = await Tesseract.recognize(f, 'eng', {logger:m => { if(m.status === 'recognizing text') bar.style.width = Math.round(10 + m.progress * 90) + '%'; }});
-    const info = analyserEtiquette(data.text);
-    if(info.nom && !$('fNom').value) $('fNom').value = info.nom;
-    if(info.app && !$('fApp').value) $('fApp').value = info.app;
-    if(info.suivi && !$('fSuivi').value) $('fSuivi').value = info.suivi;
+    const info = await lireEtiquette(url, (i, n) => { bar.style.width = Math.round(10 + i / n * 90) + '%'; $('scanTxt').textContent = `Lecture de l'étiquette… (essai ${i + 1})`; });
+    if(info.nom) $('fNom').value = info.nom;
+    if(info.app) $('fApp').value = info.app;
+    if(info.suivi) $('fSuivi').value = info.suivi;
     if(info.transporteur) setTrans(info.transporteur);
     scanInfo = info; verifier();
-    $('scanTxt').textContent = info.nom || info.app ? 'Étiquette lue — vérifiez les champs ci-dessous.' : 'Texte peu lisible — complétez à la main.';
+    $('scanTxt').textContent = info.nom || info.app ? 'Étiquette lue — vérifiez les champs ci-dessous.' : 'Texte peu lisible — reprenez la photo plus près, ou complétez à la main.';
   }catch(err){ $('scanTxt').textContent = err.message; }
   bar.style.width = '100%'; setTimeout(() => $('scanProg').style.display = 'none', 400);
 };
 
+/* Essaie plusieurs versions de l'image et fusionne les meilleures informations trouvées. */
+// Versions de l'image essayées (taille, filtre, noir et blanc local). Choisies d'après de vraies photos d'étiquettes.
+const VERSIONS = [
+  [1800, 'grayscale(1) contrast(1.4)', false],
+  [3200, 'grayscale(1)', true],
+  [3000, 'grayscale(1) contrast(1.4)', false],
+  [2400, 'grayscale(1) contrast(1.4)', false],
+  [1800, 'grayscale(1)', false],
+  [2600, 'grayscale(1)', true],
+];
+async function lireEtiquette(src, progres = () => {}){
+  const w = await lecteur(), img = await chargerImage(src);
+  const lus = []; let n = 0;
+  const lire = async (deg, v) => {
+    progres(n++, 9);
+    let c = preparer(img, deg, v[0], v[1]); if(v[2]) c = contraster(c);
+    const {data} = await w.recognize(c);
+    const info = analyserEtiquette(data.text); info.deg = deg; info.v = v; lus.push(info); return info;
+  };
+  // 1) Trouver le bon sens de la photo (à l'endroit, à l'envers, de côté)
+  let sens = null;
+  for(const [deg, v] of [[0, VERSIONS[0]], [180, VERSIONS[0]], [0, VERSIONS[1]], [180, VERSIONS[1]], [90, VERSIONS[0]], [270, VERSIONS[0]]]){
+    const i = await lire(deg, v);
+    if(i.adresseTrouvee){ sens = deg; break; }
+  }
+  if(sens === null){
+    const meilleur = [...lus].sort((a, b) => b.score - a.score)[0];
+    if(!meilleur || meilleur.score === 0) return fusionner(lus);
+    sens = meilleur.deg;
+  }
+  // 2) Relire dans ce sens avec d'autres versions, jusqu'à ce que nom et appartement soient confirmés
+  for(const v of VERSIONS){
+    if(lus.some(x => x.deg === sens && x.v === v)) continue;
+    const r = fusionner(lus.filter(x => x.deg === sens));
+    if(r.adresseOk && r.app && r.nom && r.confirme) break;
+    const i = await lire(sens, v); i.v = v;
+  }
+  return fusionner(lus.filter(x => x.deg === sens).length ? lus.filter(x => x.deg === sens) : lus);
+}
+/* Vote entre les lectures : le nom et l'appartement les plus souvent lus (et les plus « propres ») gagnent. */
+function fusionner(lus){
+  const bonnes = lus.filter(x => x.adresseTrouvee), base = bonnes.length ? bonnes : lus;
+  const voter = (k, qualite = () => 0) => {
+    const c = {}; base.forEach(x => { if(x[k]) c[x[k]] = (c[x[k]] || 0) + 1; });
+    const t = Object.entries(c).sort((a, b) => (b[1] - a[1]) || (qualite(b[0]) - qualite(a[0])));
+    return t.length ? {val:t[0][0], n:t[0][1]} : {val:'', n:0};
+  };
+  const qNom = s => s.split(' ').reduce((a, w) => a + (w.length >= 3 ? w.length : -5), 0);
+  const nom = voter('nom', qNom), app = voter('app');
+  const out = {nom:nom.val, app:app.val, suivi:voter('suivi').val, transporteur:voter('transporteur').val,
+    confirme:nom.n >= 2 || (bonnes.length >= 3 && nom.val && qNom(nom.val) >= 8)};
+  const ok = lus.find(x => x.adresseOk === true);
+  if(ok){ out.adresseOk = true; out.adresseLue = ok.adresseLue; }
+  else { const non = lus.find(x => x.adresseOk === false); out.adresseOk = non ? false : null; out.adresseLue = non ? non.adresseLue : ''; }
+  return out;
+}
+
+/* Distance d'édition (pour accepter les petites erreurs de lecture d'une lettre ou deux) */
+function distance(a, b){
+  const m = [...Array(b.length + 1).keys()];
+  for(let i = 1; i <= a.length; i++){ let p = m[0]; m[0] = i;
+    for(let j = 1; j <= b.length; j++){ const t = m[j]; m[j] = Math.min(m[j] + 1, m[j - 1] + 1, p + (a[i - 1] === b[j - 1] ? 0 : 1)); p = t; } }
+  return m[b.length];
+}
+const SUFFIXES = ['rue','street','st','avenue','av','ave','boulevard','boul','blvd','chemin','ch','road','rd','place','pl','de','du','des','la','le'];
+
 /* Extrait nom, appartement, suivi, transporteur et vérifie l'adresse à partir du texte lu */
 function analyserEtiquette(texte){
   const lignes = texte.split('\n').map(l => l.trim()).filter(Boolean);
-  const plat = nrm(texte), out = {};
-  // transporteur et numéro de suivi
-  if(/amazon|amzl|\btba\d/i.test(texte)) out.transporteur = 'Amazon';
+  const out = {score:0};
+  // --- transporteur et numéro de suivi
+  if(/amazon|amzl|\b(?:TBA|ASL)\s?\d{8,}|\bYYZ\d|\bYUL\d|\bSLMT\b/i.test(texte)) out.transporteur = 'Amazon';
   else if(/purolator/i.test(texte)) out.transporteur = 'Purolator';
   else if(/\bups\b|1z[0-9a-z]{16}/i.test(texte)) out.transporteur = 'UPS';
   else if(/fedex/i.test(texte)) out.transporteur = 'FedEx';
   else if(/canada post|postes canada/i.test(texte)) out.transporteur = 'Postes Canada';
   else if(/intelcom/i.test(texte)) out.transporteur = 'Intelcom';
-  const suivi = texte.match(/\bTBA\s?\d{9,13}\b/i) || texte.match(/\b1Z[0-9A-Z]{16}\b/i);
-  if(suivi) out.suivi = suivi[0].replace(/\s/g, '').toUpperCase();
-  // appartement : "APT 1203", "#1203", "UNIT 1203" ou "1203-1000 Rue …"
-  const app = texte.match(/\b(?:APT|APP|APPT|APARTMENT|APPARTEMENT|UNIT|UNITE|SUITE|STE|LOGEMENT)\.?\s*#?\s*([0-9]{1,5}[A-Z]?)\b/i)
-           || texte.match(/#\s*([0-9]{1,5}[A-Z]?)\b/)
-           || texte.match(/(?:^|\n)\s*([0-9]{1,5}[A-Z]?)\s*[-–]\s*[0-9]{1,6}\s+[A-Za-zÀ-ÿ]/);
-  if(app) out.app = app[1].toUpperCase();
-  // nom : d'abord un résident connu dont le nom apparaît sur l'étiquette
-  const connus = residentsList.filter(r => { const t = nrm(r.nom).split(' ').filter(w => w.length > 1); return t.length && t.every(w => plat.includes(w)); });
-  const bon = connus.find(r => !out.app || nrm(r.appart) === nrm(out.app)) || connus[0];
-  if(bon){ out.nom = bon.nom; if(!out.app) out.app = bon.appart; }
-  else {
-    // sinon : la ligne de lettres juste au-dessus de la ligne d'adresse
-    const iAdr = lignes.findIndex(l => /^\s*(?:[0-9]{1,5}\s*[-–]\s*)?[0-9]{1,6}\s+[A-Za-zÀ-ÿ]/.test(l));
-    const cand = lignes.slice(0, iAdr > 0 ? iAdr : lignes.length).reverse()
-      .find(l => /^[A-Za-zÀ-ÿ' .-]{4,40}$/.test(l) && l.split(/\s+/).length >= 2 && !/ship|deliver|livr|amazon|to:|from|de:|à:/i.test(l));
-    if(cand) out.nom = cand.replace(/\s+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w+/g, w => w.toLowerCase());
-  }
-  // adresse : on cherche le numéro civique et le nom de la rue de l'immeuble
-  // (« 100 rue X », « 100 X Street », « 1203-100 X St »… tous acceptés)
+  else if(/neighbour/i.test(texte)) out.transporteur = 'Autre';
+  const suivi = texte.match(/\b(?:TBA|ASL)\s?[0-9O]{9,13}\b/i) || texte.match(/\b1Z[0-9A-Z]{16}\b/i) || texte.match(/\bN\d{2}[A-Z0-9]{4}\d{9,}\b/);
+  if(suivi){ out.suivi = suivi[0].replace(/\s/g, '').toUpperCase().replace(/^(TBA|ASL)(.*)$/, (_, a, b) => a + b.replace(/O/g, '0')); out.score++; }
+
+  // --- adresse de l'immeuble : numéro civique + nom de rue (petites fautes de lecture acceptées)
   const civique = (adresse.match(/\d+/) || [''])[0];
-  const rue = nrm(adresse).split(' ').filter(w => !/^\d+$/.test(w) && !['rue','street','st','avenue','av','ave','boulevard','boul','blvd','de','du','des','la','le'].includes(w));
-  const ligneAdr = lignes.find(l => /^\s*(?:[0-9]{1,5}[A-Z]?\s*[-–]\s*)?[0-9]{1,6}\s+[A-Za-zÀ-ÿ]/.test(l));
-  out.adresseLue = ligneAdr || '';
-  if(!civique || !rue.length) out.adresseOk = null;
+  const mots = nrm(adresse).split(' ').filter(w => !/^\d+$/.test(w) && !SUFFIXES.includes(w));
+  const resteRue = l => { const t = nrm(l).split(' ');
+    return mots.length && mots.every(m => t.some(x => x.length >= 3 && distance(x, m) <= (m.length > 4 ? 2 : 1))); };
+  const aCivique = l => civique && new RegExp('(^|[^0-9])' + civique + '([^0-9]|$)').test(l);
+  let iAdr = lignes.findIndex(l => aCivique(l) && resteRue(l));
+  if(iAdr >= 0){ out.adresseOk = true; out.adresseLue = lignes[iAdr]; out.score += 3; }
   else {
-    const okNum = new RegExp('(^|[^0-9])' + civique + '([^0-9]|$)').test(texte);
-    const okRue = rue.every(w => plat.includes(w));
-    out.adresseOk = okNum && okRue ? true : ligneAdr ? false : null;
+    // une autre adresse bien lisible (numéro + rue/street…) : ce n'est pas l'immeuble
+    const autre = lignes.findIndex(l => /(^|\s)\d{1,6}\s+(rue|street|st|avenue|ave|boul|blvd|chemin|road|rd)\b/i.test(nrm(l)) || /\b\d{1,6}\s+[a-z]{3,}\s+(street|st|avenue|ave|road|rd|blvd)\b/i.test(nrm(l)));
+    out.adresseOk = autre >= 0 && civique ? false : null;
+    if(autre >= 0){ out.adresseLue = lignes[autre]; iAdr = autre; out.score += 1; }
+  }
+
+  // --- appartement : « 1051-<civique> rue X », « Apt 1651 », « Unit #235 », « #235 »
+  // on cherche seulement autour de la ligne d'adresse, pour ne pas prendre un chiffre ailleurs sur l'étiquette
+  const zone = iAdr >= 0 ? lignes.slice(Math.max(0, iAdr - 1), iAdr + 3).join('\n') : texte;
+  const app = (civique && zone.match(new RegExp('(?:^|[^0-9])([0-9]{2,5})\\s*[-–—~=_]{1,2}\\s*' + civique + '(?![0-9])')))
+           || zone.match(/\b(?:APT|APP|APPT|APARTMENT|APPARTEMENT|UNIT|UNITE|SUITE|STE|LOGEMENT)\.?\s*#?\s*([0-9]{1,5}[A-Z]?)\b/i)
+           || zone.match(/#\s*([0-9]{1,5}[A-Z]?)\b/);
+  if(app && app[1] !== civique){ out.app = app[1].toUpperCase(); out.score += 2; }
+
+  // --- nom : la ligne de mots juste au-dessus de l'adresse (on enlève les déchets de lecture autour)
+  const nettoyer = l => {
+    const t = l.replace(/[|[\]{}()<>«»"“”_*=+\\/]/g, ' ').split(/\s+/).filter(Boolean);
+    const ok = w => /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’.\-–—]*$/.test(w);
+    const suite = (sauterCourts) => {
+      let fin = t.length; while(fin > 0 && (!ok(t[fin - 1]) || (sauterCourts && t[fin - 1].length <= 2))) fin--;
+      let debut = fin; while(debut > 0 && ok(t[debut - 1])) debut--;
+      return t.slice(debut, fin);
+    };
+    // « Joe Ouanounou 5 N » : on ignore d'abord les petits déchets à la fin
+    let mots = suite(true); if(mots.length < 2) mots = suite(false);
+    mots = mots.map(w => w.replace(/[.]+$/, '').replace(/[–—]/g, '-'));
+    while(mots.length > 2 && mots[mots.length - 1].length <= 2) mots.pop();   // « Ayoub ol a or A » → « Ayoub »
+    while(mots.length > 2 && mots[0].length <= 2) mots.shift();
+    return mots;
+  };
+  const interdit = /deliver|ship|livr|parcel|phone|canada|quebec|montreal|lbs|prime|to:|from/i;
+  out.adresseTrouvee = out.adresseOk === true;
+  const avant = iAdr > 0 ? lignes.slice(Math.max(0, iAdr - 3), iAdr).reverse() : [];   // pas d'adresse = pas de nom fiable
+  for(const l of avant){
+    if(interdit.test(l) && !/^[A-Za-zÀ-ÿ]+\s+[A-Za-zÀ-ÿ]+/.test(l.replace(interdit, ''))) continue;
+    const m = nettoyer(l.replace(/deliver(y)?\s*to:?|ship\s*to:?/ig, ''));
+    if(m.length >= 2 && m.join('').length >= 5){
+      out.nom = m.join(' ').toLowerCase().replace(/(^|[\s\-–—'’])([a-zà-ÿ])/g, (_, a, b) => a + b.toUpperCase());
+      out.score += 2; break;
+    }
+  }
+  // si un résident connu habite à cet appartement avec un nom proche, on prend l'orthographe exacte
+  if(out.app && out.nom){
+    const r = residentsList.find(x => nrm(x.appart) === nrm(out.app) && distance(nrm(x.nom), nrm(out.nom)) <= Math.max(2, nrm(x.nom).length * 0.3));
+    if(r) out.nom = r.nom;
   }
   return out;
 }
