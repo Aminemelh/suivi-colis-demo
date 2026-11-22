@@ -748,13 +748,25 @@ async function majQuota(q){
     if(!q){ const r = await fetch('/api/scan'); if(!r.ok) throw 0; q = await r.json(); }
     quotaInfo = q.actif ? q : null;
   }catch{ quotaInfo = null; }
-  const bloque = quotaInfo && quotaInfo.restantes <= 0;
+  const google = quotaInfo && quotaInfo.moteur !== 'paddle';
+  const bloque = google && quotaInfo.restantes <= 0;
   $('scanZone').classList.toggle('off', !!bloque);
   $('scanFile').disabled = !!bloque;
-  const fin = quotaInfo ? new Date(quotaInfo.reprise + 'T00:00').toLocaleDateString('fr-CA', {day:'numeric', month:'long'}) : '';
+  const fin = google ? new Date(quotaInfo.reprise + 'T00:00').toLocaleDateString('fr-CA', {day:'numeric', month:'long'}) : '';
   $('quota').innerHTML = !quotaInfo ? ''
+    : !google ? 'Lecture faite sur l\'ordinateur de l\'immeuble : la photo n\'est envoyée nulle part.'
     : bloque ? `<b>Limite de ${quotaInfo.limite} photos atteinte ce mois-ci.</b> Le scan reprend le ${fin}. Remplissez à la main en attendant.`
     : `${quotaInfo.restantes} photo${quotaInfo.restantes > 1 ? 's' : ''} restante${quotaInfo.restantes > 1 ? 's' : ''} ce mois-ci (limite ${quotaInfo.limite}, remise à zéro le ${fin}).`;
+}
+
+/* Sur une photo à l'envers, les lignes arrivent dans l'ordre inverse (le nom après l'adresse) :
+   on analyse le texte dans les deux sens et on garde la lecture la plus complète. */
+function lireTexteServeur(texte){
+  const a = analyserEtiquette(texte), b = analyserEtiquette(texte.split('\n').reverse().join('\n'));
+  const note = x => (x.adresseTrouvee ? 10 : 0) + (x.nom ? 3 : 0) + (x.app ? 2 : 0) + (x.suivi ? 1 : 0);
+  const best = note(b) > note(a) ? b : a;
+  best.adresseOk ??= null;
+  return best;
 }
 
 /* Réduit la photo (moins de données à envoyer, même lecture) et la convertit pour l'envoi */
@@ -841,13 +853,13 @@ $('scanFile').onchange = async e => {
   try{
     let info;
     if(quotaInfo){
-      // Google Cloud Vision via server.py (le serveur refuse au-delà de la limite du mois)
-      bar.style.width = '30%';
+      // PaddleOCR sur l'ordinateur de l'immeuble, ou Google Cloud Vision (limité par mois), via server.py
+      bar.style.width = '30%'; $('scanTxt').textContent = 'Lecture de l\'étiquette… (quelques secondes)';
       const r = await fetch('/api/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({image:await photoPourEnvoi(url)})});
       const d = await r.json(); if(d.quota) majQuota(d.quota);
       if(!r.ok) throw new Error(d.erreur || 'Lecture impossible');
       bar.style.width = '90%';
-      info = analyserEtiquette(d.texte); info.adresseOk ??= null;
+      info = lireTexteServeur(d.texte);
     } else {
       // sans serveur Google (démo en ligne) : lecteur intégré au navigateur
       info = await lireEtiquette(url, (i, n) => { bar.style.width = Math.round(10 + i / n * 90) + '%'; $('scanTxt').textContent = `Lecture de l'étiquette… (essai ${i + 1})`; });
