@@ -1,0 +1,855 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suivi Expedibox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#ffffff; --side:#fafafa; --txt:#111111; --mut:#6b6b6b; --faint:#a3a3a3; --line:#ececec; --soft:#f5f5f5;
+  --acc:#111111;
+  --ok:#15803d; --okbg:#f0fdf4; --mid:#b45309; --midbg:#fffbeb; --bad:#b91c1c; --badbg:#fef2f2;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg)}
+body{color:var(--txt);font:14px/1.55 Inter,system-ui,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased;font-feature-settings:"tnum" 1,"cv11" 1}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:0}
+
+/* ---------- Mise en page ---------- */
+.app{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
+aside{background:var(--side);border-right:1px solid var(--line);padding:28px 18px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:11px;padding:0 10px 28px}
+.mark{width:32px;height:32px;border-radius:9px;background:var(--txt);color:#fff;display:grid;place-items:center}
+.brand b{display:block;font-size:14.5px;font-weight:600;letter-spacing:-.01em}
+.brand span{display:block;font-size:12px;color:var(--mut)}
+nav{display:grid;gap:2px}
+.nav{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:8px;color:var(--mut);font-weight:500;text-align:left;width:100%;transition:background .12s,color .12s}
+.nav:hover{background:var(--soft);color:var(--txt)}
+.nav.on{background:#fff;color:var(--txt);box-shadow:0 0 0 1px var(--line),0 1px 2px rgba(0,0,0,.04)}
+.nav .badge{margin-left:auto;font-size:11.5px;font-weight:600;min-width:20px;height:20px;padding:0 6px;border-radius:99px;display:grid;place-items:center;background:var(--soft);color:var(--mut)}
+.nav .badge.red{background:var(--bad);color:#fff}
+.side-foot{margin-top:auto;padding:14px 10px 0;border-top:1px solid var(--line);font-size:12.5px;color:var(--mut);display:grid;gap:8px}
+.status{display:flex;align-items:center;gap:8px;color:var(--txt);font-weight:500}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.dot.live{background:#16a34a} .dot.demo{background:#d97706} .dot.off{background:var(--bad)}
+.refresh{display:inline-flex;align-items:center;gap:6px;color:var(--mut);font-size:12.5px;padding:0}
+.refresh:hover{color:var(--txt)}
+.refresh.spin svg{animation:spin .8s linear infinite} @keyframes spin{to{transform:rotate(360deg)}}
+
+main{padding:44px 56px 60px;max-width:1100px;width:100%;min-width:0}
+.view{display:none;animation:fade .25s ease} .view.on{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.head{margin-bottom:32px}
+.head h1{margin:0;font-size:26px;font-weight:600;letter-spacing:-.025em}
+.head p{margin:6px 0 0;color:var(--mut);max-width:620px}
+
+/* ---------- Chiffres clés ---------- */
+.stats{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.stat{padding:26px 28px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.stat:nth-child(2n){border-right:0} .stat:nth-last-child(-n+2){border-bottom:0}
+.stat .k{font-size:12.5px;font-weight:500;color:var(--mut);text-transform:uppercase;letter-spacing:.06em}
+.stat .v{font-size:40px;font-weight:600;letter-spacing:-.035em;line-height:1.1;margin:10px 0 8px}
+.stat .v small{font-size:17px;font-weight:500;color:var(--faint);letter-spacing:0;margin-left:4px}
+.stat .v.red{color:var(--bad)}
+.stat .d{color:var(--mut);font-size:13.5px}
+.track{height:5px;border-radius:99px;background:var(--soft);overflow:hidden;margin-top:14px}
+.track i{display:block;height:100%;background:var(--txt);border-radius:99px}
+
+.section{margin-top:44px}
+.section h2{font-size:15px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em}
+.section > p{margin:0 0 18px;color:var(--mut);font-size:13.5px}
+
+/* Répartition */
+.split{display:flex;height:12px;border-radius:99px;overflow:hidden;gap:3px;background:#fff}
+.split i{display:block;height:100%}
+.split-legend{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:18px}
+.sl{border-left:2px solid;padding-left:14px}
+.sl b{display:block;font-size:22px;font-weight:600;letter-spacing:-.02em}
+.sl span{display:block;font-size:13px;color:var(--txt);font-weight:500}
+.sl small{display:block;color:var(--mut);font-size:12.5px}
+
+/* ---------- Tableaux ---------- */
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
+.search{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:9px;padding:0 12px;height:38px;color:var(--faint);flex:1;min-width:200px;max-width:320px}
+.search:focus-within{border-color:var(--txt)}
+.search input{border:0;outline:0;font:inherit;color:var(--txt);width:100%;background:transparent}
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;padding:3px;gap:2px}
+.seg button{padding:5px 12px;border-radius:6px;font-size:13px;font-weight:500;color:var(--mut)}
+.seg button.on{background:var(--txt);color:#fff}
+.sortbtn{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border:1px solid var(--line);border-radius:9px;font-weight:500;font-size:13px;margin-left:auto}
+.sortbtn:hover{border-color:var(--txt)}
+table{width:100%;border-collapse:collapse}
+.tbl{border:1px solid var(--line);border-radius:14px;overflow:auto}
+th{text-align:left;font-size:12px;font-weight:500;color:var(--mut);padding:12px 18px;border-bottom:1px solid var(--line);background:var(--side);white-space:nowrap}
+td{padding:14px 18px;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover td{background:#fcfcfc}
+.rank{color:var(--faint);font-size:12.5px;width:36px}
+.res-info{margin:0 0 12px;color:var(--mut);font-size:13px} .res-info b{color:var(--txt);font-weight:600}
+.name b{font-weight:500;display:block} .name span{color:var(--mut);font-size:12.5px}
+.time{display:flex;align-items:center;gap:12px}
+.time b{font-weight:600;min-width:62px}
+.bar{width:120px;height:4px;border-radius:99px;background:var(--soft);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px}
+.tag{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:500;border:1px solid}
+.t-ok{color:var(--ok);background:var(--okbg);border-color:#dcfce7}
+.t-mid{color:var(--mid);background:var(--midbg);border-color:#fef3c7}
+.t-bad{color:var(--bad);background:var(--badbg);border-color:#fee2e2}
+.t-none{color:var(--mut);background:var(--soft);border-color:var(--line)}
+.muted{color:var(--faint)}
+.locker{display:inline-grid;place-items:center;min-width:44px;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:7px;font-weight:600;font-size:13px}
+.days{font-weight:600;color:var(--bad)}
+.empty{padding:48px 20px;text-align:center;color:var(--mut)}
+.empty b{display:block;color:var(--txt);font-weight:600;margin-bottom:2px}
+
+.note{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border:1px solid var(--line);border-radius:12px;margin-top:16px;color:var(--mut);font-size:13.5px}
+.note svg{flex:none;margin-top:2px;color:var(--txt)}
+.note.warn{background:var(--midbg);border-color:#fef3c7;color:#78350f} .note.warn svg{color:var(--mid)}
+.note.err{background:var(--badbg);border-color:#fee2e2;color:#7f1d1d} .note.err svg{color:var(--bad)}
+.note code{background:#fff;border:1px solid var(--line);padding:0 5px;border-radius:4px;font-size:12.5px}
+.btn{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px;border:1px solid var(--line);border-radius:9px;font-weight:500;font-size:13px}
+.btn:hover{border-color:var(--txt)}
+.defs{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1px solid var(--line);border-radius:12px;margin-top:16px}
+.defs div{padding:14px 16px;border-right:1px solid var(--line);font-size:13px;color:var(--mut)} .defs div:last-child{border-right:0}
+.defs b{display:block;color:var(--txt);font-weight:500;margin-bottom:2px}
+/* Évolution mensuelle */
+.trend-sum{display:flex;gap:40px;flex-wrap:wrap;margin-bottom:22px}
+.trend-sum div{font-size:13px;color:var(--mut)}
+.trend-sum b{display:block;font-size:20px;font-weight:600;color:var(--txt);letter-spacing:-.02em}
+.trend-sum .down{color:var(--ok)} .trend-sum .up{color:var(--bad)}
+.chart{border:1px solid var(--line);border-radius:14px;padding:22px 20px 10px}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.chart-legend{display:flex;gap:20px;font-size:12.5px;color:var(--mut);margin-top:8px}
+.chart-legend i{display:inline-block;vertical-align:middle;margin-right:7px}
+
+/* Fiche résident */
+tbody tr.click{cursor:pointer}
+.shade{position:fixed;inset:0;background:rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:opacity .2s;z-index:20}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(480px,100%);background:#fff;border-left:1px solid var(--line);
+  box-shadow:-20px 0 40px rgba(0,0,0,.06);transform:translateX(100%);transition:transform .25s cubic-bezier(.2,.8,.2,1);z-index:21;overflow:auto;padding:32px 30px}
+.drawer{visibility:hidden;transition:transform .25s cubic-bezier(.2,.8,.2,1),visibility 0s .25s}
+.layer.on .shade{opacity:1;pointer-events:auto} .layer.on .drawer{transform:none;visibility:visible;transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+
+/* Salle gestionnaire */
+.head-row{display:flex;align-items:flex-start;gap:20px;justify-content:space-between;flex-wrap:wrap}
+.btn.dark{background:var(--txt);color:#fff;border-color:var(--txt);height:40px;padding:0 16px}
+.btn.dark:hover{background:#333}
+.strip{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:14px;margin-bottom:28px}
+.strip div{padding:18px 22px;border-right:1px solid var(--line);font-size:13px;color:var(--mut)} .strip div:last-child{border-right:0}
+.strip b{display:block;font-size:26px;font-weight:600;color:var(--txt);letter-spacing:-.03em;line-height:1.2}
+.chk{width:24px;height:24px;border-radius:50%;border:1.5px solid #cfcfcf;display:grid;place-items:center;color:transparent;transition:.15s}
+.chk:hover{border-color:var(--ok)}
+.chk.on{background:var(--ok);border-color:var(--ok);color:#fff}
+tr.done td{color:var(--faint)} tr.done .name b{text-decoration:line-through;color:var(--mut)}
+.del{color:var(--faint);padding:6px;border-radius:6px} .del:hover{color:var(--bad);background:var(--badbg)}
+.carrier{display:inline-block;font-size:12px;padding:2px 9px;border-radius:6px;background:var(--soft);color:var(--txt);font-weight:500}
+.age-ok{color:var(--mut)} .age-old{color:var(--mid);font-weight:600} .age-vold{color:var(--bad);font-weight:600}
+
+/* Formulaire d'ajout */
+.scan{display:grid;place-items:center;text-align:center;gap:6px;border:1.5px dashed #d4d4d4;border-radius:14px;padding:22px;cursor:pointer;color:var(--mut);transition:.15s;position:relative;overflow:hidden}
+.scan:hover{border-color:var(--txt);color:var(--txt)}
+.scan b{color:var(--txt);font-weight:600}
+.scan img{max-width:100%;max-height:170px;border-radius:8px}
+.scan input{display:none}
+.prog{height:3px;background:var(--soft);border-radius:99px;overflow:hidden;width:100%;margin-top:8px}
+.prog i{display:block;height:100%;background:var(--txt);width:0;transition:width .2s}
+.field{display:grid;gap:6px;margin-top:16px}
+.field label{font-size:12.5px;font-weight:500;color:var(--mut)}
+.field input,.field textarea{font:inherit;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:10px 12px;outline:0;background:#fff;width:100%}
+.field input:focus,.field textarea:focus{border-color:var(--txt)}
+.row2{display:grid;grid-template-columns:1fr 130px;gap:12px}
+.pills{display:flex;flex-wrap:wrap;gap:6px}
+.pills button{border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:12.5px;font-weight:500;color:var(--mut)}
+.pills button.on{background:var(--txt);border-color:var(--txt);color:#fff}
+.checks{display:grid;gap:8px;margin-top:18px}
+.ck{display:grid;gap:2px;font-size:13px;padding:2px 0 2px 12px;border-left:2px solid var(--line)}
+.ck b{font-weight:500}
+.ck.ok{border-color:var(--ok)} .ck.ok b{color:var(--ok)}
+.ck.warn{border-color:var(--mid)} .ck.warn b{color:var(--mid)}
+.ck.bad{border-color:var(--bad)} .ck.bad b{color:var(--bad)}
+.form-actions{display:flex;gap:10px;margin-top:24px}
+.form-actions .btn{flex:1;justify-content:center;height:42px}
+.close{position:absolute;top:22px;right:22px;width:34px;height:34px;border-radius:8px;display:grid;place-items:center;color:var(--mut)}
+.close:hover{background:var(--soft);color:var(--txt)}
+.drawer h3{margin:0;font-size:22px;font-weight:600;letter-spacing:-.02em}
+.drawer .sub{color:var(--mut);margin:4px 0 14px}
+.mini{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:12px;margin:22px 0 28px}
+.mini div{padding:14px 16px;border-right:1px solid var(--line);font-size:12px;color:var(--mut)} .mini div:last-child{border-right:0}
+.mini b{display:block;font-size:19px;font-weight:600;color:var(--txt);letter-spacing:-.02em}
+.hist-row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:13px 0;border-bottom:1px solid var(--line)}
+.hist-row:last-child{border-bottom:0}
+.hist-row .when{font-weight:500} .hist-row .meta{color:var(--mut);font-size:12.5px;grid-column:1}
+.hist-row .delay{grid-row:1/3;grid-column:2;align-self:center;text-align:right;font-weight:600}
+.hist-row .delay small{display:block;font-weight:500;font-size:11.5px}
+.s-wait{color:var(--mid)} .s-agent{color:var(--bad)}
+
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);opacity:0;background:var(--txt);color:#fff;padding:10px 16px;border-radius:9px;font-weight:500;font-size:13px;transition:.2s;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  aside{position:sticky;top:0;z-index:5;height:auto;flex-direction:row;align-items:center;padding:10px 16px;border-right:0;border-bottom:1px solid var(--line);gap:8px;overflow-x:auto}
+  .brand{padding:0 8px 0 0}.brand div{display:none}
+  nav{display:flex;gap:4px}.nav{width:auto;white-space:nowrap;padding:7px 10px}
+  .side-foot{display:none}
+  main{padding:28px 16px 48px}
+  .stats{grid-template-columns:1fr}.stat{border-right:0!important;border-bottom:1px solid var(--line)!important}.stat:last-child{border-bottom:0!important}
+  .stat .v{font-size:34px}
+  .split-legend,.defs{grid-template-columns:1fr}.defs div{border-right:0;border-bottom:1px solid var(--line)}.defs div:last-child{border-bottom:0}
+  .sortbtn{margin-left:0}
+  .strip{grid-template-columns:1fr}.strip div{border-right:0;border-bottom:1px solid var(--line)}.strip div:last-child{border-bottom:0}
+  .drawer{padding:26px 18px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<aside>
+  <div class="brand">
+    <div class="mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg></div>
+    <div><b>Suivi Expedibox</b><span id="bname"></span></div>
+  </div>
+  <nav>
+    <button class="nav" data-v="apercu">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      Vue d'ensemble
+    </button>
+    <button class="nav" data-v="vider">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Casiers à vider <span class="badge" id="nVider">0</span>
+    </button>
+    <button class="nav" data-v="residents">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M16 3.5a4 4 0 0 1 0 9M22 21a7 7 0 0 0-4-6.3"/></svg>
+      Résidents
+    </button>
+    <button class="nav" data-v="salle">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-6 9 6v12"/><path d="M9 21v-7h6v7"/></svg>
+      Salle gestionnaire <span class="badge" id="nSalle">0</span>
+    </button>
+  </nav>
+  <div class="side-foot">
+    <span class="status"><span class="dot" id="dot"></span><span id="stTxt">Connexion…</span></span>
+    <span id="upd"></span>
+    <button class="refresh" id="refresh">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+      Actualiser
+    </button>
+  </div>
+</aside>
+
+<main>
+  <div id="err"></div>
+
+  <!-- ===== Vue d'ensemble ===== -->
+  <section class="view" id="v-apercu">
+    <div class="head">
+      <h1>Vue d'ensemble</h1>
+      <p>L'état des casiers Expedibox aujourd'hui et le temps que prennent les résidents pour récupérer leurs livraisons.</p>
+    </div>
+    <div class="stats" id="stats"></div>
+
+    <div class="section">
+      <h2>Rapidité des résidents</h2>
+      <p id="splitSub">Classement selon le temps moyen entre le dépôt dans le casier et la récupération.</p>
+      <div class="split" id="split"></div>
+      <div class="split-legend" id="splitLegend"></div>
+    </div>
+
+    <div class="section">
+      <h2>Évolution sur 12 mois</h2>
+      <p>Nombre de livraisons déposées chaque mois et temps moyen de récupération de ces livraisons.</p>
+      <div class="trend-sum" id="trendSum"></div>
+      <div class="chart"><div id="chart"></div>
+        <div class="chart-legend">
+          <span><i style="width:12px;height:12px;border-radius:3px;background:#e5e5e5"></i>Livraisons du mois</span>
+          <span><i style="width:16px;height:2px;background:#111"></i>Temps moyen de récupération (jours)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Casiers à vider ===== -->
+  <section class="view" id="v-vider">
+    <div class="head">
+      <h1>Casiers à vider</h1>
+      <p>Casiers occupés depuis plus de <span class="rDays">30</span> jours. Un agent doit retirer la livraison du casier.</p>
+    </div>
+    <div class="tbl"><table><thead><tr><th>Casier</th><th>Résident</th><th>Déposé le</th><th>Occupé depuis</th></tr></thead><tbody id="tVider"></tbody></table></div>
+    <div id="autoNote"></div>
+    <div style="margin-top:12px"><button class="btn" id="copy">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      Copier la liste</button></div>
+
+    <div class="section">
+      <h2>Déjà vidés par les agents</h2>
+      <p id="agentSub">Livraisons qu'un agent a dû retirer lui-même parce que le résident ne les a pas récupérées.</p>
+      <div class="tbl"><table><thead><tr><th>Casier</th><th>Résident</th><th>Déposé le</th><th>Vidé le</th><th>Après</th></tr></thead><tbody id="tAgent"></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ===== Résidents ===== -->
+  <section class="view" id="v-residents">
+    <div class="head">
+      <h1>Résidents</h1>
+      <p>Temps moyen que chaque résident met à récupérer ses livraisons, calculé sur tout l'historique. Cliquez sur un résident pour voir sa fiche.</p>
+    </div>
+    <div class="toolbar">
+      <label class="search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search" placeholder="Nom ou appartement">
+      </label>
+      <div class="seg" id="seg">
+        <button class="on" data-f="all">Tous</button>
+        <button data-f="lent">Lents</button>
+        <button data-f="moyen">Moyens</button>
+        <button data-f="rapide">Rapides</button>
+      </div>
+      <button class="sortbtn" id="sortbtn"></button>
+    </div>
+    <p class="res-info" id="resInfo"></p>
+    <div class="tbl"><table>
+      <thead><tr><th>#</th><th>Résident</th><th>Temps moyen</th><th>Rapidité</th><th>Livraisons</th><th>Casier occupé en ce moment</th></tr></thead>
+      <tbody id="tRes"></tbody>
+    </table></div>
+    <div id="resMore" style="text-align:center;margin-top:14px"></div>
+    <div class="defs" id="defs"></div>
+  </section>
+  <!-- ===== Salle gestionnaire ===== -->
+  <section class="view" id="v-salle">
+    <div class="head head-row">
+      <div>
+        <h1>Salle gestionnaire</h1>
+        <p>Colis gardés dans la salle gestionnaire quand l'Expedibox est plein. Ce registre est indépendant d'Expedibox.</p>
+      </div>
+      <button class="btn dark" id="addBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Ajouter un colis</button>
+    </div>
+    <div class="strip" id="salleStrip"></div>
+    <div class="toolbar">
+      <label class="search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="sSearch" placeholder="Nom, appartement ou suivi">
+      </label>
+      <div class="seg" id="sSeg">
+        <button class="on" data-f="attente">En attente</button>
+        <button data-f="recup">Récupérés</button>
+        <button data-f="tous">Tous</button>
+      </div>
+    </div>
+    <div class="tbl"><table>
+      <thead><tr><th style="width:56px">Récupéré</th><th>Résident</th><th>Transporteur</th><th>Arrivé</th><th>Note</th><th></th></tr></thead>
+      <tbody id="tSalle"></tbody>
+    </table></div>
+    <p class="muted" style="font-size:12.5px;margin-top:12px">Cochez le cercle quand le résident vient chercher son colis.</p>
+  </section>
+</main>
+</div>
+
+<div class="layer" id="ajout">
+  <div class="shade" data-close></div>
+  <div class="drawer" role="dialog" aria-label="Ajouter un colis">
+    <button class="close" data-close aria-label="Fermer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <h3>Ajouter un colis</h3>
+    <div class="sub">Scannez l'étiquette ou remplissez à la main.</div>
+
+    <label class="scan" id="scanZone">
+      <input type="file" id="scanFile" accept="image/*" capture="environment">
+      <div id="scanInner">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="color:var(--txt)"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+        <div><b>Scanner l'étiquette</b></div>
+        <div style="font-size:12.5px">Prenez une photo ou choisissez une image de l'étiquette</div>
+      </div>
+      <div class="prog" id="scanProg" style="display:none"><i></i></div>
+    </label>
+
+    <div class="field"><label for="fNom">Nom du destinataire</label><input id="fNom" list="resList" autocomplete="off" placeholder="Ex. Marie Tremblay"></div>
+    <datalist id="resList"></datalist>
+    <div class="row2">
+      <div class="field"><label for="fSuivi">Numéro de suivi</label><input id="fSuivi" placeholder="Optionnel"></div>
+      <div class="field"><label for="fApp">Appartement</label><input id="fApp" placeholder="Ex. 1203"></div>
+    </div>
+    <div class="field"><label>Transporteur</label><div class="pills" id="fTrans"></div></div>
+    <div class="field"><label for="fNote">Note</label><textarea id="fNote" rows="2" placeholder="Ex. grosse boîte, étagère du fond"></textarea></div>
+
+    <div class="checks" id="checks"></div>
+    <div class="form-actions">
+      <button class="btn" data-close>Annuler</button>
+      <button class="btn dark" id="saveBtn">Enregistrer le colis</button>
+    </div>
+  </div>
+</div>
+
+<div class="layer" id="fiche">
+  <div class="shade" id="shade"></div>
+  <div class="drawer" role="dialog" aria-label="Fiche résident">
+    <button class="close" id="closeFiche" aria-label="Fermer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <div id="ficheBody"></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="demo-statique.js"></script>
+<script>
+/* ===== RÉGLAGES — à modifier ici directement ===== */
+const S = {
+  fast: 2,     // Rapide : temps moyen ≤ 2 jours
+  slow: 7,     // Lent   : temps moyen > 7 jours  (entre les deux : Moyen)
+  remind: 30,  // Remplacé par "rappel_jours" de config.json
+  top: 20,     // Onglet Résidents : nombre de résidents affichés par défaut
+  immeuble: 'Immeuble démo'
+};
+/* ================================================== */
+
+const $ = id => document.getElementById(id);
+const DAY = 86400000;
+let rows = [], casTotal = null, auto = {}, loaded = false, filter = 'all', slowFirst = true, showAll = false;
+$('bname').textContent = S.immeuble;
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+const norm = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const fmtD = d => d.toLocaleDateString('fr-CA', {day:'numeric', month:'long', year:'numeric'});
+const fmtJ = n => (Math.round(n * 10) / 10).toLocaleString('fr-CA');
+const plural = (n, s, p) => n + ' ' + (n > 1 ? (p || s + 's') : s);
+function toast(m){ const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2500); }
+const I = {
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  mail:'<rect x="2" y="4" width="20" height="16" rx="3"/><path d="m22 7-10 6L2 7"/>',
+  alert:'<circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/>'
+};
+const ic = k => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I[k]}</svg>`;
+
+/* ---------- Navigation : une vue à la fois ---------- */
+function show(v){
+  if(!$('v-' + v)) v = 'apercu';
+  document.querySelectorAll('.view').forEach(x => x.classList.toggle('on', x.id === 'v-' + v));
+  document.querySelectorAll('.nav').forEach(x => x.classList.toggle('on', x.dataset.v === v));
+  if(location.hash !== '#' + v) history.replaceState(null, '', '#' + v);
+  scrollTo(0, 0);
+}
+document.querySelectorAll('.nav').forEach(b => b.onclick = () => show(b.dataset.v));
+show(location.hash.slice(1));
+addEventListener('hashchange', () => show(location.hash.slice(1)));
+
+/* ---------- Données (server.py → API Expedibox) ---------- */
+async function loadAPI(){
+  $('refresh').classList.add('spin');
+  try{
+    const r = await fetch('/api/colis'); const d = await r.json();
+    if(!r.ok) throw new Error(d.erreur || ('Erreur ' + r.status));
+    rows = d.colis.map(c => ({...c, depot:new Date(c.depot), recup:c.recup ? new Date(c.recup) : null})).filter(c => !isNaN(c.depot));
+    S.remind = d.rappel_jours || S.remind; casTotal = d.casiers_total; auto = d.envoi_auto || {}; loaded = true;
+    $('dot').className = 'dot ' + (d.demo ? 'demo' : 'live');
+    $('stTxt').textContent = d.demo ? 'Mode démo' : 'Connecté à Expedibox';
+    $('upd').textContent = 'Mis à jour à ' + new Date().toLocaleTimeString('fr-CA', {hour:'2-digit', minute:'2-digit'});
+    $('err').innerHTML = '';
+  }catch(e){
+    $('dot').className = 'dot off'; $('stTxt').textContent = 'Hors ligne';
+    const msg = location.protocol === 'file:'
+      ? 'Lancez <code>python server.py</code> puis ouvrez <code>http://localhost:8080</code>.'
+      : e.message.includes('Clé API') ? 'La clé API n\'est pas encore configurée. Ajoutez-la dans <code>config.json</code> puis relancez <code>server.py</code>.' : esc(e.message);
+    $('err').innerHTML = `<div class="note err" style="margin:0 0 28px">${ic('alert')}<div><b>Connexion à Expedibox impossible.</b> ${msg}</div></div>`;
+  }
+  $('refresh').classList.remove('spin');
+  render();
+}
+
+/* ---------- Calculs ---------- */
+const rkey = r => (r.resident + '|' + r.appart).toLowerCase();
+const delay = r => (r.recup - r.depot) / DAY;
+const MOIS = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+function months(){
+  const now = new Date(), out = [];
+  for(let i = 11; i >= 0; i--){
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const inM = rows.filter(r => r.depot.getFullYear() === d.getFullYear() && r.depot.getMonth() === d.getMonth());
+    const done = inM.filter(r => r.recup);
+    out.push({label:MOIS[d.getMonth()], year:d.getFullYear(), n:inM.length,
+      avg:done.length ? done.reduce((a,r) => a + delay(r), 0) / done.length : null,
+      agent:inM.filter(r => r.retire_par_agent).length});
+  }
+  return out;
+}
+function residents(){
+  const now = Date.now(), by = {};
+  for(const r of rows){
+    const key = rkey(r);
+    const p = by[key] ??= {key, resident:r.resident, appart:r.appart, durs:[], waiting:[]};
+    if(r.recup) p.durs.push((r.recup - r.depot) / DAY); else p.waiting.push((now - r.depot) / DAY);
+  }
+  return Object.values(by).map(p => {
+    const avg = p.durs.length ? p.durs.reduce((a,b) => a + b, 0) / p.durs.length : null;
+    return {...p, avg, n:p.durs.length + p.waiting.length, nWait:p.waiting.length,
+      maxWait:p.waiting.length ? Math.max(...p.waiting) : 0,
+      speed:avg == null ? 'nouveau' : avg <= S.fast ? 'rapide' : avg > S.slow ? 'lent' : 'moyen'};
+  });
+}
+const aVider = () => { const now = Date.now();
+  return rows.filter(r => !r.recup && (now - r.depot) / DAY >= S.remind).map(r => ({...r, age:(now - r.depot) / DAY})).sort((a,b) => b.age - a.age); };
+const COL = {rapide:'#16a34a', moyen:'#d97706', lent:'#dc2626', nouveau:'#d4d4d4'};
+const TAG = {rapide:'<span class="tag t-ok">Rapide</span>', moyen:'<span class="tag t-mid">Moyen</span>',
+             lent:'<span class="tag t-bad">Lent</span>', nouveau:'<span class="tag t-none">Pas encore d\'historique</span>'};
+
+/* ---------- Affichage ---------- */
+function render(){
+  const res = residents(), old = aVider();
+  const waiting = rows.filter(r => !r.recup);
+  const occ = new Set(waiting.map(r => r.casier || r.id)).size;
+  const done = rows.filter(r => r.recup);
+  const avg = done.length ? done.reduce((a,r) => a + (r.recup - r.depot) / DAY, 0) / done.length : null;
+  const known = res.filter(r => r.speed !== 'nouveau');
+  const cnt = k => res.filter(r => r.speed === k).length;
+  const ms = months();
+  const yearAgo = Date.now() - 365 * DAY;
+  const agentAll = rows.filter(r => r.retire_par_agent && r.recup && r.recup >= yearAgo).sort((a,b) => b.recup - a.recup);
+  $('nVider').textContent = old.length; $('nVider').classList.toggle('red', old.length > 0);
+  document.querySelectorAll('.rDays').forEach(x => x.textContent = S.remind);
+
+  /* Vue d'ensemble */
+  const L = loaded;
+  $('stats').innerHTML = `
+    <div class="stat"><div class="k">Casiers occupés</div>
+      <div class="v">${L ? occ : '–'}${casTotal ? `<small>sur ${casTotal}</small>` : ''}</div>
+      <div class="d">${!L ? '' : casTotal ? `${plural(casTotal - occ, 'casier libre', 'casiers libres')} en ce moment.` : 'Casiers qui contiennent une livraison non récupérée.'}</div>
+      ${casTotal ? `<div class="track"><i style="width:${Math.min(100, occ / casTotal * 100)}%"></i></div>` : ''}</div>
+    <div class="stat"><div class="k">Casiers à vider</div>
+      <div class="v ${old.length ? 'red' : ''}">${L ? old.length : '–'}</div>
+      <div class="d">${old.length ? `Occupés depuis plus de ${S.remind} jours. Les agents sont avertis par courriel.` : `Aucun casier n'est occupé depuis plus de ${S.remind} jours.`}</div></div>
+    <div class="stat"><div class="k">Temps moyen de récupération</div>
+      <div class="v">${avg == null ? '–' : fmtJ(avg)}<small>${avg == null ? '' : avg < 2 ? 'jour' : 'jours'}</small></div>
+      <div class="d">Délai moyen entre le dépôt dans le casier et la récupération par le résident.</div></div>
+    <div class="stat"><div class="k">Résidents lents</div>
+      <div class="v">${L ? cnt('lent') : '–'}${known.length ? `<small>sur ${known.length}</small>` : ''}</div>
+      <div class="d">Résidents qui mettent en moyenne plus de ${S.slow} jours à récupérer leurs livraisons.</div></div>
+    <div class="stat"><div class="k">Livraisons ce mois-ci</div>
+      <div class="v">${L ? ms[11].n : '–'}</div>
+      <div class="d">${!L ? '' : ms[10].n ? `${ms[11].n >= ms[10].n ? '+' : '−'}${Math.abs(ms[11].n - ms[10].n)} par rapport au mois dernier (${ms[10].n}). Le mois n'est pas terminé.` : 'Dépôts faits dans les casiers depuis le début du mois.'}</div></div>
+    <div class="stat"><div class="k">Casiers vidés par les agents</div>
+      <div class="v">${L ? agentAll.length : '–'}<small>en 12 mois</small></div>
+      <div class="d">Livraisons jamais récupérées par le résident, retirées par un agent. ${L ? plural(ms[11].agent, 'fois', 'fois') + ' ce mois-ci.' : ''}</div></div>`;
+
+  /* Évolution mensuelle */
+  const withAvg = ms.filter(m => m.avg != null);
+  const first = withAvg.slice(0, 3), last = withAvg.slice(-3);
+  const mean = a => a.reduce((s,m) => s + m.avg, 0) / a.length;
+  if(withAvg.length >= 4){
+    const a = mean(first), b = mean(last), pct = Math.round((b - a) / a * 100);
+    $('trendSum').innerHTML = `
+      <div><b>${fmtJ(a)} j</b>temps moyen, il y a un an</div>
+      <div><b>${fmtJ(b)} j</b>temps moyen, 3 derniers mois</div>
+      <div><b class="${pct <= 0 ? 'down' : 'up'}">${pct <= 0 ? '↓' : '↑'} ${Math.abs(pct)} %</b>${pct <= 0 ? 'plus rapide qu\'avant' : 'plus lent qu\'avant'}</div>
+      <div><b>${ms.reduce((s,m) => s + m.n, 0)}</b>livraisons en 12 mois</div>`;
+  } else $('trendSum').innerHTML = '';
+  $('chart').innerHTML = chartSVG(ms);
+
+  const tot = Math.max(1, known.length);
+  $('split').innerHTML = ['rapide','moyen','lent'].map(k => cnt(k) ? `<i style="width:${cnt(k) / tot * 100}%;background:${COL[k]}"></i>` : '').join('') || '<i style="width:100%;background:var(--soft)"></i>';
+  $('splitLegend').innerHTML = [
+    ['rapide', 'Rapides', `${S.fast} jours ou moins`],
+    ['moyen', 'Moyens', `entre ${S.fast} et ${S.slow} jours`],
+    ['lent', 'Lents', `plus de ${S.slow} jours`]
+  ].map(([k, t, d]) => `<div class="sl" style="border-color:${COL[k]}"><b>${cnt(k)}</b><span>${t}</span><small>${d} en moyenne</small></div>`).join('');
+
+  /* Casiers à vider */
+  $('tVider').innerHTML = old.length ? old.map(r => `<tr class="click" data-k="${esc(rkey(r))}">
+      <td><span class="locker">${esc(r.casier || '—')}</span></td>
+      <td class="name"><b>${esc(r.resident)}</b><span>${r.appart ? 'App. ' + esc(r.appart) : ''}</span></td>
+      <td>${fmtD(r.depot)}</td>
+      <td><span class="days">${Math.floor(r.age)} jours</span></td></tr>`).join('')
+    : `<tr><td colspan="4"><div class="empty"><b>Aucun casier à vider</b>Tous les casiers ont été libérés en moins de ${S.remind} jours.</div></td></tr>`;
+  $('autoNote').innerHTML = !L ? '' : auto.actif
+    ? `<div class="note">${ic('mail')}<div>Un courriel est envoyé automatiquement à <b style="color:var(--txt)">${esc(auto.courriel)}</b> chaque jour à ${auto.heure} h, dès qu'un casier atteint ${S.remind} jours.</div></div>`
+    : `<div class="note warn">${ic('mail')}<div>L'envoi automatique aux agents n'est pas encore configuré. Remplissez le courriel des agents et le SMTP dans <code>config.json</code>.</div></div>`;
+  $('copy').style.display = old.length ? '' : 'none';
+  $('tAgent').innerHTML = agentAll.length ? agentAll.slice(0, 25).map(r => `<tr class="click" data-k="${esc(rkey(r))}">
+      <td><span class="locker">${esc(r.casier || '—')}</span></td>
+      <td class="name"><b>${esc(r.resident)}</b><span>${r.appart ? 'App. ' + esc(r.appart) : ''}</span></td>
+      <td>${fmtD(r.depot)}</td><td>${fmtD(r.recup)}</td>
+      <td>${plural(Math.floor(delay(r)), 'jour')}</td></tr>`).join('')
+    : `<tr><td colspan="5"><div class="empty"><b>Aucun</b>Les agents n'ont eu à vider aucun casier depuis 12 mois.</div></td></tr>`;
+  if(agentAll.length > 25) $('tAgent').insertAdjacentHTML('beforeend', `<tr><td colspan="5" class="muted" style="text-align:center">… et ${agentAll.length - 25} autres</td></tr>`);
+
+  /* Résidents */
+  const q = norm($('search').value);
+  const list = res.filter(r => (filter === 'all' || r.speed === filter) && (!q || norm(r.resident + ' ' + r.appart).includes(q)))
+    .sort((a,b) => {
+      if(a.avg == null || b.avg == null) return (a.avg == null) - (b.avg == null);  // sans historique : toujours à la fin
+      return slowFirst ? b.avg - a.avg : a.avg - b.avg;
+    });
+  $('sortbtn').innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></svg>
+    ${slowFirst ? 'Du plus lent au plus rapide' : 'Du plus rapide au plus lent'}`;
+  const scale = S.slow * 2;
+  let rank = 0;
+  // Par défaut : seulement les premiers du classement. La recherche montre toujours tous les résultats.
+  const shown = showAll || q ? list : list.slice(0, S.top);
+  const groupe = {all:'résidents', lent:'résidents lents', moyen:'résidents moyens', rapide:'résidents rapides'}[filter];
+  $('resInfo').innerHTML = !L || !list.length ? ''
+    : q ? `${plural(list.length, 'résultat')} pour « ${esc($('search').value)} ».`
+    : shown.length < list.length ? `Les <b>${shown.length} ${slowFirst ? 'plus lents' : 'plus rapides'}</b> sur ${list.length} ${groupe}. Utilisez la recherche pour trouver un résident.`
+    : `${list.length} ${groupe}.`;
+  $('resMore').innerHTML = q || list.length <= S.top ? ''
+    : `<button class="btn" id="moreBtn">${showAll ? `Afficher seulement les ${S.top} premiers` : `Voir les ${list.length} ${groupe}`}</button>`;
+  if($('moreBtn')) $('moreBtn').onclick = () => { showAll = !showAll; render(); if(!showAll) $('v-residents').scrollIntoView(); };
+  $('tRes').innerHTML = shown.length ? shown.map(r => `<tr class="click" data-k="${esc(r.key)}" title="Voir la fiche">
+      <td class="rank">${r.avg == null ? '' : ++rank}</td>
+      <td class="name"><b>${esc(r.resident)}</b><span>${r.appart ? 'App. ' + esc(r.appart) : ''}</span></td>
+      <td><div class="time"><b>${r.avg == null ? '—' : fmtJ(r.avg) + ' j'}</b>
+        <div class="bar"><i style="width:${r.avg == null ? 0 : Math.min(100, r.avg / scale * 100)}%;background:${COL[r.speed]}"></i></div></div></td>
+      <td>${TAG[r.speed]}</td>
+      <td>${r.n}</td>
+      <td>${r.nWait ? `Oui, depuis ${plural(Math.floor(r.maxWait), 'jour')}` : '<span class="muted">Non</span>'}</td></tr>`).join('')
+    : `<tr><td colspan="6"><div class="empty">${L ? 'Aucun résident ne correspond.' : 'Chargement…'}</div></td></tr>`;
+  $('defs').innerHTML = `
+    <div><b>Temps moyen</b>Moyenne des jours entre chaque dépôt et sa récupération.</div>
+    <div><b>Rapide · Moyen · Lent</b>${S.fast} j ou moins · entre ${S.fast} et ${S.slow} j · plus de ${S.slow} j.</div>
+    <div><b>Livraisons</b>Nombre de dépôts dans un casier pour ce résident (un dépôt peut contenir plusieurs colis).</div>`;
+}
+
+/* ---------- Graphique mensuel ---------- */
+function chartSVG(ms){
+  const W = 720, H = 230, top = 34, bot = 30, cw = W / ms.length, ph = H - top - bot;
+  const maxN = Math.max(1, ...ms.map(m => m.n)), maxA = Math.max(1, ...ms.map(m => m.avg || 0));
+  const yN = n => H - bot - n / maxN * ph * .78;
+  const yA = a => H - bot - a / maxA * ph;
+  let s = `<svg viewBox="0 0 ${W} ${H}" font-family="Inter,system-ui,sans-serif" role="img" aria-label="Livraisons et temps moyen par mois">`;
+  s += `<line x1="0" x2="${W}" y1="${H - bot}" y2="${H - bot}" stroke="#ececec"/>`;
+  ms.forEach((m, i) => {
+    const x = i * cw + cw / 2, bw = Math.min(30, cw * .5), cur = i === ms.length - 1;
+    s += `<rect x="${x - bw/2}" y="${yN(m.n)}" width="${bw}" height="${H - bot - yN(m.n)}" rx="4" fill="${cur ? '#d4d4d4' : '#ececec'}"><title>${m.label} ${m.year} : ${m.n} livraisons</title></rect>`;
+    if(m.n) s += `<text x="${x}" y="${H - bot - 6}" text-anchor="middle" font-size="10.5" fill="#8a8a8a">${m.n}</text>`;
+    s += `<text x="${x}" y="${H - 9}" text-anchor="middle" font-size="11.5" fill="${cur ? '#111' : '#8a8a8a'}" font-weight="${cur ? 600 : 400}">${m.label}</text>`;
+  });
+  const pts = ms.map((m, i) => m.avg == null ? null : [i * cw + cw / 2, yA(m.avg), m.avg]).filter(Boolean);
+  if(pts.length > 1) s += `<polyline points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="#111" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+  pts.forEach(([x, y, a]) => {
+    s += `<circle cx="${x}" cy="${y}" r="3.5" fill="#fff" stroke="#111" stroke-width="1.8"/>`;
+    s += `<text x="${x}" y="${y - 10}" text-anchor="middle" font-size="11" font-weight="600" fill="#111">${fmtJ(a)}</text>`;
+  });
+  return s + '</svg>';
+}
+
+/* ---------- Fiche résident ---------- */
+function openFiche(key){
+  const p = residents().find(r => r.key === key); if(!p) return;
+  const now = Date.now();
+  const hist = rows.filter(r => rkey(r) === key).sort((a,b) => b.depot - a.depot);
+  const done = hist.filter(r => r.recup);
+  const longest = done.length ? Math.max(...done.map(delay)) : null;
+  const nAgent = hist.filter(r => r.retire_par_agent).length;
+  $('ficheBody').innerHTML = `
+    <h3>${esc(p.resident)}</h3>
+    <div class="sub">${p.appart ? 'Appartement ' + esc(p.appart) : ''}</div>
+    ${TAG[p.speed]}
+    <div class="mini">
+      <div><b>${p.avg == null ? '—' : fmtJ(p.avg) + ' j'}</b>temps moyen</div>
+      <div><b>${hist.length}</b>${hist.length > 1 ? 'livraisons' : 'livraison'}</div>
+      <div><b>${longest == null ? '—' : Math.floor(longest) + ' j'}</b>plus long délai</div>
+    </div>
+    ${nAgent ? `<div class="note err" style="margin:-10px 0 24px">${ic('alert')}<div>Un agent a dû vider le casier ${plural(nAgent, 'fois', 'fois')} pour ce résident.</div></div>` : ''}
+    <div class="section" style="margin-top:0"><h2>Historique des livraisons</h2></div>
+    ${hist.map(r => {
+      const wait = !r.recup, d = wait ? (now - r.depot) / DAY : delay(r);
+      const status = wait ? `<span class="s-wait">En attente dans le casier</span>`
+        : r.retire_par_agent ? `<span class="s-agent">Vidé par un agent le ${fmtD(r.recup)}</span>` : `Récupéré le ${fmtD(r.recup)}`;
+      const col = wait ? 'var(--mid)' : r.retire_par_agent ? 'var(--bad)' : COL[d <= S.fast ? 'rapide' : d > S.slow ? 'lent' : 'moyen'];
+      return `<div class="hist-row">
+        <div class="when">Déposé le ${fmtD(r.depot)}</div>
+        <div class="delay" style="color:${col}">${d < 1 ? '< 1 j' : Math.floor(d) + ' j'}<small class="muted">${wait ? 'depuis' : 'délai'}</small></div>
+        <div class="meta">Casier ${esc(r.casier || '—')} · ${status}</div></div>`;
+    }).join('')}`;
+  $('fiche').classList.add('on');
+}
+const closeLayers = () => document.querySelectorAll('.layer').forEach(l => l.classList.remove('on'));
+$('shade').onclick = $('closeFiche').onclick = closeLayers;
+document.querySelectorAll('[data-close]').forEach(b => b.onclick = closeLayers);
+addEventListener('keydown', e => { if(e.key === 'Escape') closeLayers(); });
+document.addEventListener('click', e => { const tr = e.target.closest('tr.click'); if(tr) openFiche(tr.dataset.k); });
+
+/* =========================================================
+   SALLE GESTIONNAIRE — registre manuel, indépendant d'Expedibox
+   ========================================================= */
+let salle = [], residentsList = [], adresse = '', sFilter = 'attente', fTrans = '';
+const TRANSPORTEURS = ['Amazon', 'Postes Canada', 'Purolator', 'UPS', 'FedEx', 'Intelcom', 'Autre'];
+const nrm = s => norm(String(s || '')).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const cpNorm = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+async function loadSalle(){
+  try{
+    const d = await fetch('/api/salle').then(r => r.json());
+    salle = d.colis || []; residentsList = d.residents || []; adresse = d.adresse || '';
+    $('resList').innerHTML = residentsList.map(r => `<option value="${esc(r.nom)}">App. ${esc(r.appart)}</option>`).join('');
+  }catch{}
+  renderSalle();
+}
+
+function renderSalle(){
+  const now = Date.now(), wait = salle.filter(c => !c.recupere_le);
+  const today = new Date().toDateString();
+  $('nSalle').textContent = wait.length;
+  const oldest = wait.length ? Math.max(...wait.map(c => (now - new Date(c.ajoute_le)) / DAY)) : null;
+  $('salleStrip').innerHTML = `
+    <div><b>${wait.length}</b>${wait.length > 1 ? 'colis en attente' : 'colis en attente'} dans la salle</div>
+    <div><b>${oldest == null ? '—' : Math.floor(oldest) + ' j'}</b>depuis l'arrivée du plus ancien</div>
+    <div><b>${salle.filter(c => c.recupere_le && new Date(c.recupere_le).toDateString() === today).length}</b>récupérés aujourd'hui</div>`;
+  const q = nrm($('sSearch').value);
+  const list = salle.filter(c => sFilter === 'tous' || (sFilter === 'attente' ? !c.recupere_le : c.recupere_le))
+    .filter(c => !q || nrm(c.nom + ' ' + c.appart + ' ' + c.suivi).includes(q))
+    .sort((a,b) => sFilter === 'recup' ? new Date(b.recupere_le) - new Date(a.recupere_le) : new Date(a.ajoute_le) - new Date(b.ajoute_le));
+  $('tSalle').innerHTML = list.length ? list.map(c => {
+    const age = (now - new Date(c.ajoute_le)) / DAY, done = !!c.recupere_le;
+    const cls = done ? '' : age >= 30 ? 'age-vold' : age >= 14 ? 'age-old' : 'age-ok';
+    return `<tr class="${done ? 'done' : ''}">
+      <td><button class="chk ${done ? 'on' : ''}" data-chk="${c.id}" title="${done ? 'Annuler' : 'Marquer comme récupéré'}">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button></td>
+      <td class="name"><b>${esc(c.nom || '—')}</b><span>${c.appart ? 'App. ' + esc(c.appart) : ''}${c.suivi ? ' · ' + esc(c.suivi) : ''}</span></td>
+      <td>${c.transporteur ? `<span class="carrier">${esc(c.transporteur)}</span>` : '<span class="muted">—</span>'}</td>
+      <td>${done ? 'Récupéré le ' + fmtD(new Date(c.recupere_le)) : `<span class="${cls}">${age < 1 ? 'Aujourd\'hui' : 'Il y a ' + plural(Math.floor(age), 'jour')}</span>`}</td>
+      <td style="white-space:normal;max-width:220px;color:var(--mut);font-size:13px">${esc(c.note)}</td>
+      <td><button class="del" data-del="${c.id}" title="Supprimer (erreur de saisie)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></button></td></tr>`;
+  }).join('') : `<tr><td colspan="6"><div class="empty">${sFilter === 'attente' ? '<b>Aucun colis en attente</b>La salle gestionnaire est vide.' : 'Aucun colis.'}</div></td></tr>`;
+}
+
+async function majSalle(id, body){
+  const d = await fetch('/api/salle/' + id, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r => r.json());
+  salle = d.colis || salle; renderSalle();
+}
+$('tSalle').onclick = e => {
+  const c = e.target.closest('[data-chk]'), d = e.target.closest('[data-del]');
+  if(c){ const it = salle.find(x => x.id === c.dataset.chk); majSalle(it.id, {recupere:!it.recupere_le}).then(() => toast(it.recupere_le ? 'Remis en attente' : 'Marqué comme récupéré')); }
+  if(d && confirm('Supprimer ce colis du registre ? (seulement en cas d\'erreur de saisie)')) majSalle(d.dataset.del, {supprimer:true}).then(() => toast('Colis supprimé'));
+};
+$('sSearch').oninput = renderSalle;
+$('sSeg').onclick = e => { const b = e.target.closest('button'); if(!b) return;
+  sFilter = b.dataset.f; [...$('sSeg').children].forEach(x => x.classList.toggle('on', x === b)); renderSalle(); };
+
+/* ----- Formulaire ----- */
+function setTrans(t){ fTrans = t; $('fTrans').innerHTML = TRANSPORTEURS.map(x => `<button type="button" class="${x === t ? 'on' : ''}" data-t="${x}">${x}</button>`).join(''); }
+$('fTrans').onclick = e => { const b = e.target.closest('button'); if(b) setTrans(fTrans === b.dataset.t ? '' : b.dataset.t); };
+let scanInfo = null;   // résultat de la lecture de l'étiquette (adresse lue)
+function openAjout(){
+  ['fNom','fApp','fSuivi','fNote'].forEach(id => $(id).value = ''); setTrans('Amazon'); scanInfo = null;
+  $('scanInner').innerHTML = $('scanInner').dataset.html || ($('scanInner').dataset.html = $('scanInner').innerHTML);
+  $('scanProg').style.display = 'none'; $('scanFile').value = '';
+  verifier(); $('ajout').classList.add('on'); setTimeout(() => $('fNom').focus(), 250);
+}
+$('addBtn').onclick = openAjout;
+
+/* Vérification de l'adresse lue sur l'étiquette : est-ce bien l'adresse de l'immeuble (config.json) ? */
+function verifier(){
+  if(!scanInfo){ $('checks').innerHTML = ''; return; }
+  if(!adresse){ $('checks').innerHTML = `<div class="ck warn"><b>Adresse de l'immeuble non configurée</b><span class="muted">Impossible de vérifier l'adresse de l'étiquette.</span></div>`; return; }
+  const lue = scanInfo.adresseLue ? `<span class="muted">Adresse lue : ${esc(scanInfo.adresseLue)}</span>` : '';
+  const [cls, txt] = scanInfo.adresseOk === true ? ['ok', `Adresse de l'immeuble (${esc(adresse)})`]
+    : scanInfo.adresseOk === false ? ['bad', `Ce n'est pas l'adresse de l'immeuble (${esc(adresse)})`]
+    : ['warn', 'Adresse illisible : vérifiez-la sur l\'étiquette'];
+  $('checks').innerHTML = `<div class="ck ${cls}"><b>${txt}</b>${lue}</div>`;
+}
+/* Suggestions : choisir un nom remplit l'appartement */
+$('fNom').addEventListener('input', () => {
+  const r = residentsList.find(x => x.nom === $('fNom').value); if(r && !$('fApp').value) $('fApp').value = r.appart;
+});
+
+$('saveBtn').onclick = async () => {
+  const body = {nom:$('fNom').value, appart:$('fApp').value, suivi:$('fSuivi').value, note:$('fNote').value, transporteur:fTrans};
+  const r = await fetch('/api/salle', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const d = await r.json();
+  if(!r.ok){ toast(d.erreur || 'Erreur'); return; }
+  salle.push(d); closeLayers(); renderSalle(); toast('Colis ajouté à la salle gestionnaire');
+};
+
+/* ----- Scan de l'étiquette (lecture du texte sur l'ordinateur, aucune image envoyée ailleurs) ----- */
+function chargerOCR(){
+  return window.Tesseract ? Promise.resolve() : new Promise((ok, ko) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+    s.onload = ok; s.onerror = () => ko(new Error('Lecteur d\'étiquette indisponible (pas d\'Internet ?)'));
+    document.head.appendChild(s);
+  });
+}
+$('scanFile').onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  const url = URL.createObjectURL(f);
+  $('scanInner').innerHTML = `<img src="${url}" alt="Étiquette"><div style="font-size:12.5px;margin-top:6px" id="scanTxt">Lecture de l'étiquette…</div>`;
+  $('scanProg').style.display = ''; const bar = $('scanProg').firstElementChild; bar.style.width = '5%';
+  try{
+    await chargerOCR();
+    const {data} = await Tesseract.recognize(f, 'eng', {logger:m => { if(m.status === 'recognizing text') bar.style.width = Math.round(10 + m.progress * 90) + '%'; }});
+    const info = analyserEtiquette(data.text);
+    if(info.nom && !$('fNom').value) $('fNom').value = info.nom;
+    if(info.app && !$('fApp').value) $('fApp').value = info.app;
+    if(info.suivi && !$('fSuivi').value) $('fSuivi').value = info.suivi;
+    if(info.transporteur) setTrans(info.transporteur);
+    scanInfo = info; verifier();
+    $('scanTxt').textContent = info.nom || info.app ? 'Étiquette lue — vérifiez les champs ci-dessous.' : 'Texte peu lisible — complétez à la main.';
+  }catch(err){ $('scanTxt').textContent = err.message; }
+  bar.style.width = '100%'; setTimeout(() => $('scanProg').style.display = 'none', 400);
+};
+
+/* Extrait nom, appartement, suivi, transporteur et vérifie l'adresse à partir du texte lu */
+function analyserEtiquette(texte){
+  const lignes = texte.split('\n').map(l => l.trim()).filter(Boolean);
+  const plat = nrm(texte), out = {};
+  // transporteur et numéro de suivi
+  if(/amazon|amzl|\btba\d/i.test(texte)) out.transporteur = 'Amazon';
+  else if(/purolator/i.test(texte)) out.transporteur = 'Purolator';
+  else if(/\bups\b|1z[0-9a-z]{16}/i.test(texte)) out.transporteur = 'UPS';
+  else if(/fedex/i.test(texte)) out.transporteur = 'FedEx';
+  else if(/canada post|postes canada/i.test(texte)) out.transporteur = 'Postes Canada';
+  else if(/intelcom/i.test(texte)) out.transporteur = 'Intelcom';
+  const suivi = texte.match(/\bTBA\s?\d{9,13}\b/i) || texte.match(/\b1Z[0-9A-Z]{16}\b/i);
+  if(suivi) out.suivi = suivi[0].replace(/\s/g, '').toUpperCase();
+  // appartement : "APT 1203", "#1203", "UNIT 1203" ou "1203-1000 Rue …"
+  const app = texte.match(/\b(?:APT|APP|APPT|APARTMENT|APPARTEMENT|UNIT|UNITE|SUITE|STE|LOGEMENT)\.?\s*#?\s*([0-9]{1,5}[A-Z]?)\b/i)
+           || texte.match(/#\s*([0-9]{1,5}[A-Z]?)\b/)
+           || texte.match(/(?:^|\n)\s*([0-9]{1,5}[A-Z]?)\s*[-–]\s*[0-9]{1,6}\s+[A-Za-zÀ-ÿ]/);
+  if(app) out.app = app[1].toUpperCase();
+  // nom : d'abord un résident connu dont le nom apparaît sur l'étiquette
+  const connus = residentsList.filter(r => { const t = nrm(r.nom).split(' ').filter(w => w.length > 1); return t.length && t.every(w => plat.includes(w)); });
+  const bon = connus.find(r => !out.app || nrm(r.appart) === nrm(out.app)) || connus[0];
+  if(bon){ out.nom = bon.nom; if(!out.app) out.app = bon.appart; }
+  else {
+    // sinon : la ligne de lettres juste au-dessus de la ligne d'adresse
+    const iAdr = lignes.findIndex(l => /^\s*(?:[0-9]{1,5}\s*[-–]\s*)?[0-9]{1,6}\s+[A-Za-zÀ-ÿ]/.test(l));
+    const cand = lignes.slice(0, iAdr > 0 ? iAdr : lignes.length).reverse()
+      .find(l => /^[A-Za-zÀ-ÿ' .-]{4,40}$/.test(l) && l.split(/\s+/).length >= 2 && !/ship|deliver|livr|amazon|to:|from|de:|à:/i.test(l));
+    if(cand) out.nom = cand.replace(/\s+/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).replace(/\B\w+/g, w => w.toLowerCase());
+  }
+  // adresse : on cherche le numéro civique et le nom de la rue de l'immeuble
+  // (« 100 rue X », « 100 X Street », « 1203-100 X St »… tous acceptés)
+  const civique = (adresse.match(/\d+/) || [''])[0];
+  const rue = nrm(adresse).split(' ').filter(w => !/^\d+$/.test(w) && !['rue','street','st','avenue','av','ave','boulevard','boul','blvd','de','du','des','la','le'].includes(w));
+  const ligneAdr = lignes.find(l => /^\s*(?:[0-9]{1,5}[A-Z]?\s*[-–]\s*)?[0-9]{1,6}\s+[A-Za-zÀ-ÿ]/.test(l));
+  out.adresseLue = ligneAdr || '';
+  if(!civique || !rue.length) out.adresseOk = null;
+  else {
+    const okNum = new RegExp('(^|[^0-9])' + civique + '([^0-9]|$)').test(texte);
+    const okRue = rue.every(w => plat.includes(w));
+    out.adresseOk = okNum && okRue ? true : ligneAdr ? false : null;
+  }
+  return out;
+}
+
+/* ---------- Actions ---------- */
+$('copy').onclick = async () => {
+  const old = aVider();
+  const t = `Casiers Expedibox occupés depuis plus de ${S.remind} jours, à vider :\n\n` +
+    old.map(r => `- Casier ${r.casier || '?'} — ${r.resident}${r.appart ? ' (app. ' + r.appart + ')' : ''} — déposé le ${fmtD(r.depot)} (${Math.floor(r.age)} jours)`).join('\n');
+  try{ await navigator.clipboard.writeText(t); toast('Liste copiée'); }catch{ toast('Copie impossible'); }
+};
+$('sortbtn').onclick = () => { slowFirst = !slowFirst; render(); };
+$('refresh').onclick = loadAPI;
+$('search').oninput = render;
+$('seg').onclick = e => { const b = e.target.closest('button'); if(!b) return;
+  filter = b.dataset.f; [...$('seg').children].forEach(x => x.classList.toggle('on', x === b)); render(); };
+
+render();
+loadAPI();
+loadSalle();
+setInterval(() => { loadAPI(); loadSalle(); }, 5 * 60 * 1000);
+</script>
+</body>
+</html>
