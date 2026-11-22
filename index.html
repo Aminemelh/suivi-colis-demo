@@ -153,6 +153,8 @@ tr.done td{color:var(--faint)} tr.done .name b{text-decoration:line-through;colo
 .scan b{color:var(--txt);font-weight:600}
 .scan img{max-width:100%;max-height:170px;border-radius:8px}
 .scan input{display:none}
+.scan.off{opacity:.45;pointer-events:none}
+.quota{font-size:12.5px;color:var(--mut);margin-top:8px} .quota b{color:var(--bad);font-weight:500}
 .prog{height:3px;background:var(--soft);border-radius:99px;overflow:hidden;width:100%;margin-top:8px}
 .prog i{display:block;height:100%;background:var(--txt);width:0;transition:width .2s}
 .field{display:grid;gap:6px;margin-top:16px}
@@ -365,6 +367,7 @@ tr.done td{color:var(--faint)} tr.done .name b{text-decoration:line-through;colo
       </div>
       <div class="prog" id="scanProg" style="display:none"><i></i></div>
     </label>
+    <div class="quota" id="quota"></div>
 
     <div class="field"><label for="fNom">Nom du destinataire</label><input id="fNom" list="resList" autocomplete="off" placeholder="Ex. Marie Tremblay"></div>
     <datalist id="resList"></datalist>
@@ -735,6 +738,31 @@ function openAjout(){
   $('scanInner').innerHTML = $('scanInner').dataset.html || ($('scanInner').dataset.html = $('scanInner').innerHTML);
   $('scanProg').style.display = 'none'; $('scanFile').value = '';
   verifier(); $('ajout').classList.add('on'); setTimeout(() => $('fNom').focus(), 250);
+  majQuota();
+}
+
+/* Compteur de photos Google Cloud Vision (limite mensuelle gérée par server.py) */
+let quotaInfo = null;   // null = pas de serveur Google : lecteur intégré au navigateur
+async function majQuota(q){
+  try{
+    if(!q){ const r = await fetch('/api/scan'); if(!r.ok) throw 0; q = await r.json(); }
+    quotaInfo = q.actif ? q : null;
+  }catch{ quotaInfo = null; }
+  const bloque = quotaInfo && quotaInfo.restantes <= 0;
+  $('scanZone').classList.toggle('off', !!bloque);
+  $('scanFile').disabled = !!bloque;
+  const fin = quotaInfo ? new Date(quotaInfo.reprise + 'T00:00').toLocaleDateString('fr-CA', {day:'numeric', month:'long'}) : '';
+  $('quota').innerHTML = !quotaInfo ? ''
+    : bloque ? `<b>Limite de ${quotaInfo.limite} photos atteinte ce mois-ci.</b> Le scan reprend le ${fin}. Remplissez à la main en attendant.`
+    : `${quotaInfo.restantes} photo${quotaInfo.restantes > 1 ? 's' : ''} restante${quotaInfo.restantes > 1 ? 's' : ''} ce mois-ci (limite ${quotaInfo.limite}, remise à zéro le ${fin}).`;
+}
+
+/* Réduit la photo (moins de données à envoyer, même lecture) et la convertit pour l'envoi */
+async function photoPourEnvoi(url){
+  const img = await chargerImage(url), s = Math.min(1, 2000 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.88).split(',')[1];
 }
 $('addBtn').onclick = openAjout;
 
@@ -811,7 +839,19 @@ $('scanFile').onchange = async e => {
   $('scanInner').innerHTML = `<img src="${url}" alt="Étiquette"><div style="font-size:12.5px;margin-top:6px" id="scanTxt">Lecture de l'étiquette…</div>`;
   $('scanProg').style.display = ''; const bar = $('scanProg').firstElementChild; bar.style.width = '5%';
   try{
-    const info = await lireEtiquette(url, (i, n) => { bar.style.width = Math.round(10 + i / n * 90) + '%'; $('scanTxt').textContent = `Lecture de l'étiquette… (essai ${i + 1})`; });
+    let info;
+    if(quotaInfo){
+      // Google Cloud Vision via server.py (le serveur refuse au-delà de la limite du mois)
+      bar.style.width = '30%';
+      const r = await fetch('/api/scan', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({image:await photoPourEnvoi(url)})});
+      const d = await r.json(); if(d.quota) majQuota(d.quota);
+      if(!r.ok) throw new Error(d.erreur || 'Lecture impossible');
+      bar.style.width = '90%';
+      info = analyserEtiquette(d.texte); info.adresseOk ??= null;
+    } else {
+      // sans serveur Google (démo en ligne) : lecteur intégré au navigateur
+      info = await lireEtiquette(url, (i, n) => { bar.style.width = Math.round(10 + i / n * 90) + '%'; $('scanTxt').textContent = `Lecture de l'étiquette… (essai ${i + 1})`; });
+    }
     if(info.nom) $('fNom').value = info.nom;
     if(info.app) $('fApp').value = info.app;
     if(info.suivi) $('fSuivi').value = info.suivi;
