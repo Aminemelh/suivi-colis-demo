@@ -356,7 +356,7 @@ tr.done td{color:var(--faint)} tr.done .name b{text-decoration:line-through;colo
   <div class="drawer" role="dialog" aria-label="Ajouter un colis">
     <button class="close" data-close aria-label="Fermer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
     <h3>Ajouter un colis</h3>
-    <div class="sub">Scannez l'étiquette ou remplissez à la main.</div>
+    <div class="sub" id="ajoutSub">Tapez les premières lettres du nom : l'appartement se remplit tout seul.</div>
 
     <label class="scan" id="scanZone">
       <input type="file" id="scanFile" accept="image/*" capture="environment">
@@ -403,6 +403,7 @@ const S = {
   slow: 7,     // Lent   : temps moyen > 7 jours  (entre les deux : Moyen)
   remind: 30,  // Remplacé par "rappel_jours" de config.json
   top: 20,     // Onglet Résidents : nombre de résidents affichés par défaut
+  scan: false, // Scan des étiquettes par photo : mettre true pour le réactiver plus tard
   immeuble: 'Immeuble démo'
 };
 /* ================================================== */
@@ -738,8 +739,10 @@ function openAjout(){
   $('scanInner').innerHTML = $('scanInner').dataset.html || ($('scanInner').dataset.html = $('scanInner').innerHTML);
   $('scanProg').style.display = 'none'; $('scanFile').value = '';
   verifier(); $('ajout').classList.add('on'); setTimeout(() => $('fNom').focus(), 250);
-  majQuota();
+  if(S.scan){ $('ajoutSub').textContent = 'Scannez l\'étiquette ou remplissez à la main.'; majQuota(); }
 }
+// Scan désactivé : on cache la zone photo, le formulaire reste en saisie manuelle
+if(!S.scan){ $('scanZone').style.display = 'none'; $('quota').style.display = 'none'; }
 
 /* Compteur de photos Google Cloud Vision (limite mensuelle gérée par server.py) */
 let quotaInfo = null;   // null = pas de serveur Google : lecteur intégré au navigateur
